@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>พนักงาน เล็บเศรษฐี</title>
+  <meta name="theme-color" content="#6b3a1e" />
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="mockBanner" class="mock-banner hidden">โหมดทดลอง — PIN คือ 1234 และข้อมูลยังไม่บันทึกลง Google Sheets</div>
+  <div class="wrap">
+    <div class="brand">
+      <img src="logo.png" alt="เล็บเศรษฐี Nail Salon" style="width:140px" />
+      <p class="sub">หน้าพนักงาน · เพิ่มแต้ม / ใช้สิทธิ์ฟรี</p>
+    </div>
+
+    <!-- PIN -->
+    <div class="card" id="stepPin">
+      <h2>เข้าสู่ระบบพนักงาน</h2>
+      <p class="hint">กรอกรหัส PIN ของร้าน</p>
+      <form id="pinForm">
+        <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" required />
+        <button class="btn-brown" type="submit">เข้าสู่ระบบ</button>
+      </form>
+      <div class="msg err" id="pinMsg"></div>
+    </div>
+
+    <!-- ค้นหา -->
+    <div class="card hidden" id="stepSearch">
+      <h2>ค้นหาลูกค้า</h2>
+      <form id="searchForm">
+        <input id="phone" type="tel" inputmode="numeric" placeholder="เบอร์โทรลูกค้า" maxlength="13" required />
+        <button class="btn-primary" type="submit">ค้นหา</button>
+      </form>
+      <div class="msg err" id="searchMsg"></div>
+
+      <form id="regForm" class="hidden">
+        <p class="hint" style="margin-top:16px">เบอร์ <b id="regPhone"></b> ยังไม่เป็นสมาชิก — สมัครให้ลูกค้าได้เลย</p>
+        <label for="name">ชื่อลูกค้า</label>
+        <input id="name" type="text" maxlength="60" required />
+        <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+          <input id="stampNow" type="checkbox" checked style="width:auto" /> เพิ่มแต้มครั้งนี้เลย (+1)
+        </label>
+        <button class="btn-green" type="submit">สมัครสมาชิก</button>
+      </form>
+    </div>
+
+    <!-- ข้อมูลสมาชิก -->
+    <div class="card hidden" id="stepMember">
+      <div class="member-head">
+        <div>
+          <p class="member-name" id="mName"></p>
+          <div class="member-phone" id="mPhone"></div>
+        </div>
+        <div class="badge" id="mBadge"></div>
+      </div>
+      <div class="stamps" id="stamps"></div>
+      <p class="status" id="mStatus"></p>
+      <div class="stats">
+        <div><b id="mVisits">0</b>มาใช้บริการ</div>
+        <div><b id="mFree">0</b>ใช้สิทธิ์ฟรีแล้ว</div>
+      </div>
+      <div class="msg" id="memberMsg"></div>
+
+      <button class="btn-primary" id="addBtn">+1 แต้ม (ใช้บริการวันนี้)</button>
+      <button class="btn-green hidden" id="redeemBtn">🎁 ใช้สิทธิ์ฟรี 1 ครั้ง</button>
+      <div class="row">
+        <button class="btn-ghost" id="undoBtn">−1 แต้ม (แก้ไข)</button>
+        <button class="btn-ghost" id="nextBtn">ลูกค้าคนถัดไป</button>
+      </div>
+    </div>
+
+    <button class="btn-link hidden" id="logoutBtn">ออกจากระบบ</button>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let pin = null, member = null, pendingPhone = null;
+
+    if (LepAPI.isMock) $('mockBanner').classList.remove('hidden');
+    try { pin = sessionStorage.getItem('lep_pin'); } catch (e) {}
+
+    function setMsg(id, text, ok) {
+      const el = $(id); el.textContent = text || '';
+      el.className = 'msg ' + (ok ? 'ok' : 'err') + (text ? ' show' : '');
+    }
+    async function withBusy(btn, fn) {
+      const label = btn.textContent; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+      try { return await fn(); } finally { btn.disabled = false; btn.textContent = label; }
+    }
+    function loggedIn(on) {
+      $('stepPin').classList.toggle('hidden', on);
+      $('stepSearch').classList.toggle('hidden', !on);
+      $('logoutBtn').classList.toggle('hidden', !on);
+      if (!on) $('stepMember').classList.add('hidden');
+      else $('phone').focus();
+    }
+    function resetSearch() {
+      member = null; pendingPhone = null;
+      $('phone').value = ''; $('regForm').classList.add('hidden');
+      $('stepMember').classList.add('hidden'); setMsg('searchMsg', ''); setMsg('memberMsg', '');
+      $('phone').focus();
+    }
+    function handleErr(err, msgId) {
+      if (/PIN/.test(err.message)) { pin = null; try { sessionStorage.removeItem('lep_pin'); } catch (e) {} loggedIn(false); setMsg('pinMsg', err.message); return; }
+      setMsg(msgId, err.message);
+    }
+
+    function renderMember(m) {
+      member = m;
+      $('mName').textContent = m.name;
+      $('mPhone').textContent = LepAPI.formatPhone(m.phone);
+      $('mBadge').textContent = m.points + ' / ' + m.target;
+      $('mVisits').textContent = m.visits;
+      $('mFree').textContent = m.freeUsed;
+      LepAPI.renderStamps($('stamps'), m);
+      const st = $('mStatus');
+      if (m.freeReady) { st.textContent = '🎉 ครบ ' + m.target + ' แต้ม — ครั้งนี้ฟรี!'; st.className = 'status ready'; }
+      else { st.textContent = 'อีก ' + (m.target - m.points) + ' ครั้ง ได้ฟรี'; st.className = 'status'; }
+      $('addBtn').classList.toggle('hidden', m.freeReady);
+      $('redeemBtn').classList.toggle('hidden', !m.freeReady);
+      $('undoBtn').disabled = m.points <= 0;
+      $('stepMember').classList.remove('hidden');
+    }
+
+    $('pinForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const value = $('pin').value.trim();
+      setMsg('pinMsg', '');
+      withBusy(e.target.querySelector('button'), async () => {
+        try {
+          await LepAPI.call('verifyPin', { pin: value });
+          pin = value; try { sessionStorage.setItem('lep_pin', pin); } catch (e) {}
+          $('pin').value = ''; loggedIn(true);
+        } catch (err) { setMsg('pinMsg', err.message); }
+      });
+    });
+
+    $('searchForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const phone = LepAPI.normPhone($('phone').value);
+      setMsg('searchMsg', ''); setMsg('memberMsg', '');
+      $('regForm').classList.add('hidden'); $('stepMember').classList.add('hidden');
+      if (!phone) return setMsg('searchMsg', 'เบอร์โทรไม่ถูกต้อง');
+      withBusy(e.target.querySelector('button'), async () => {
+        try {
+          const r = await LepAPI.call('lookup', { phone });
+          if (r.found) renderMember(r.member);
+          else { pendingPhone = phone; $('regPhone').textContent = LepAPI.formatPhone(phone); $('name').value = ''; $('regForm').classList.remove('hidden'); $('name').focus(); }
+        } catch (err) { handleErr(err, 'searchMsg'); }
+      });
+    });
+
+    $('regForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      withBusy(e.target.querySelector('button'), async () => {
+        try {
+          let r = await LepAPI.call('register', { phone: pendingPhone, name: $('name').value });
+          let note = 'สมัครสมาชิกเรียบร้อย';
+          if ($('stampNow').checked) { r = await LepAPI.call('addStamp', { phone: pendingPhone, pin }); note += ' + เพิ่ม 1 แต้มแล้ว'; }
+          $('regForm').classList.add('hidden');
+          renderMember(r.member); setMsg('memberMsg', note, true);
+        } catch (err) { handleErr(err, 'searchMsg'); }
+      });
+    });
+
+    function action(btn, name, okText, confirmText) {
+      btn.addEventListener('click', () => {
+        if (!member) return;
+        if (confirmText && !confirm(confirmText.replace('{name}', member.name))) return;
+        setMsg('memberMsg', '');
+        withBusy(btn, async () => {
+          try {
+            const r = await LepAPI.call(name, { phone: member.phone, pin });
+            renderMember(r.member); setMsg('memberMsg', okText, true);
+          } catch (err) { handleErr(err, 'memberMsg'); }
+        });
+      });
+    }
+    action($('addBtn'), 'addStamp', 'เพิ่ม 1 แต้มเรียบร้อย ✅');
+    action($('redeemBtn'), 'redeem', 'ใช้สิทธิ์ฟรีเรียบร้อย แต้มเริ่มนับใหม่ 🎉', 'ยืนยันใช้สิทธิ์ฟรีให้ {name}? แต้มจะกลับเป็น 0');
+    action($('undoBtn'), 'removeStamp', 'ลบ 1 แต้มเรียบร้อย', 'ลบ 1 แต้มของ {name}?');
+
+    $('nextBtn').addEventListener('click', resetSearch);
+    $('logoutBtn').addEventListener('click', () => { pin = null; try { sessionStorage.removeItem('lep_pin'); } catch (e) {} resetSearch(); loggedIn(false); });
+
+    loggedIn(!!pin);
+  </script>
+</body>
+</html>

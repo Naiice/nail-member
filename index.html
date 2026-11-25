@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>สมาชิก เล็บเศรษฐี</title>
+  <meta name="theme-color" content="#f9b655" />
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="mockBanner" class="mock-banner hidden">โหมดทดลอง — ข้อมูลยังไม่บันทึกลง Google Sheets</div>
+  <div class="wrap">
+    <div class="brand">
+      <img src="logo.png" alt="เล็บเศรษฐี Nail Salon" />
+      <p class="sub">บัตรสะสมแต้ม · ครบ 10 ครั้ง ฟรี 1 ครั้ง</p>
+    </div>
+
+    <!-- 1) กรอกเบอร์ -->
+    <div class="card" id="stepPhone">
+      <h2>เช็กแต้มสะสม</h2>
+      <p class="hint">กรอกเบอร์โทรศัพท์เพื่อดูแต้ม หรือสมัครสมาชิกใหม่</p>
+      <form id="phoneForm">
+        <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="08x-xxx-xxxx" maxlength="13" required />
+        <button class="btn-primary" type="submit">ตรวจสอบ</button>
+      </form>
+      <div class="msg err" id="phoneMsg"></div>
+    </div>
+
+    <!-- 2) สมัครสมาชิก -->
+    <div class="card hidden" id="stepRegister">
+      <h2>สมัครสมาชิกใหม่ ✨</h2>
+      <p class="hint">เบอร์ <b id="regPhone"></b> ยังไม่เป็นสมาชิก กรอกชื่อเพื่อเริ่มสะสมแต้มได้เลย</p>
+      <form id="regForm">
+        <label for="name">ชื่อเล่น / ชื่อ</label>
+        <input id="name" type="text" autocomplete="name" maxlength="60" placeholder="เช่น น้องมิ้น" required />
+        <button class="btn-primary" type="submit">สมัครสมาชิก</button>
+      </form>
+      <button class="btn-link" data-back>เปลี่ยนเบอร์</button>
+      <div class="msg err" id="regMsg"></div>
+    </div>
+
+    <!-- 3) บัตรสะสมแต้ม -->
+    <div class="card hidden" id="stepCard">
+      <div class="member-head">
+        <div>
+          <p class="member-name" id="mName"></p>
+          <div class="member-phone" id="mPhone"></div>
+        </div>
+        <div class="badge" id="mBadge"></div>
+      </div>
+      <div class="stamps" id="stamps"></div>
+      <p class="status" id="mStatus"></p>
+      <div class="stats">
+        <div><b id="mVisits">0</b>มาใช้บริการ</div>
+        <div><b id="mFree">0</b>ใช้สิทธิ์ฟรีแล้ว</div>
+      </div>
+      <div class="msg ok" id="cardMsg"></div>
+      <div class="row">
+        <button class="btn-ghost" id="refreshBtn">รีเฟรช</button>
+        <button class="btn-ghost" data-back>เบอร์อื่น</button>
+      </div>
+    </div>
+
+    <p class="foot">แจ้งเบอร์โทรกับพนักงานทุกครั้งที่ใช้บริการเพื่อรับแต้ม 💖</p>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const steps = ['stepPhone', 'stepRegister', 'stepCard'];
+    let currentPhone = null;
+
+    if (LepAPI.isMock) $('mockBanner').classList.remove('hidden');
+
+    function show(step) { steps.forEach((s) => $(s).classList.toggle('hidden', s !== step)); }
+    function setMsg(id, text) { const el = $(id); el.textContent = text || ''; el.classList.toggle('show', !!text); }
+    function busy(btn, on, label) {
+      btn.disabled = on;
+      if (on) { btn.dataset.label = btn.textContent; btn.innerHTML = '<span class="spinner"></span>'; }
+      else btn.textContent = label || btn.dataset.label;
+    }
+    function remember(p) { try { p ? localStorage.setItem('lep_phone', p) : localStorage.removeItem('lep_phone'); } catch (e) {} }
+
+    function renderCard(m) {
+      $('mName').textContent = m.name;
+      $('mPhone').textContent = LepAPI.formatPhone(m.phone);
+      $('mBadge').textContent = m.points + ' / ' + m.target;
+      $('mVisits').textContent = m.visits;
+      $('mFree').textContent = m.freeUsed;
+      LepAPI.renderStamps($('stamps'), m);
+      const st = $('mStatus');
+      if (m.freeReady) { st.textContent = '🎉 ครบแล้ว! ครั้งถัดไปฟรี 1 ครั้ง แจ้งพนักงานได้เลย'; st.className = 'status ready'; }
+      else { st.textContent = 'อีก ' + (m.target - m.points) + ' ครั้ง รับฟรี 1 ครั้ง'; st.className = 'status'; }
+      show('stepCard');
+    }
+
+    async function lookup(phone, btn) {
+      setMsg('phoneMsg', '');
+      if (btn) busy(btn, true);
+      try {
+        const r = await LepAPI.call('lookup', { phone });
+        currentPhone = phone;
+        if (r.found) { remember(phone); renderCard(r.member); }
+        else { $('regPhone').textContent = LepAPI.formatPhone(phone); $('name').value = ''; show('stepRegister'); $('name').focus(); }
+      } catch (err) {
+        show('stepPhone'); setMsg('phoneMsg', err.message);
+      } finally { if (btn) busy(btn, false); }
+    }
+
+    $('phoneForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const phone = LepAPI.normPhone($('phone').value);
+      if (!phone) return setMsg('phoneMsg', 'กรุณากรอกเบอร์โทรให้ถูกต้อง (เช่น 0812345678)');
+      lookup(phone, e.submitter || e.target.querySelector('button'));
+    });
+
+    $('regForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      setMsg('regMsg', '');
+      busy(btn, true);
+      try {
+        const r = await LepAPI.call('register', { phone: currentPhone, name: $('name').value });
+        remember(currentPhone);
+        renderCard(r.member);
+        setMsg('cardMsg', 'สมัครสมาชิกสำเร็จ! ยินดีต้อนรับค่ะ 💅');
+      } catch (err) { setMsg('regMsg', err.message); }
+      finally { busy(btn, false); }
+    });
+
+    $('refreshBtn').addEventListener('click', (e) => { setMsg('cardMsg', ''); lookup(currentPhone, e.currentTarget); });
+    document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', () => {
+      remember(null); currentPhone = null; setMsg('cardMsg', ''); $('phone').value = ''; show('stepPhone'); $('phone').focus();
+    }));
+
+    // เปิดหน้าครั้งถัดไปแสดงบัตรเดิมอัตโนมัติ
+    let saved = null;
+    try { saved = localStorage.getItem('lep_phone'); } catch (e) {}
+    if (saved) { $('phone').value = saved; lookup(saved, $('phoneForm').querySelector('button')); }
+  </script>
+</body>
+</html>
