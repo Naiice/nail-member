@@ -54,7 +54,7 @@ function doPost(e) {
 function route_(b) {
   switch (b.action) {
     case 'lookup':     return lookup_(b);
-    case 'register':   return register_(b);
+    case 'register':   checkPin_(b.pin); return register_(b);
     case 'verifyPin':  checkPin_(b.pin); return { ok: true };
     case 'addStamp':   checkPin_(b.pin); return changePoints_(b.phone, +1);
     case 'removeStamp':checkPin_(b.pin); return changePoints_(b.phone, -1);

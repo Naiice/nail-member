@@ -162,7 +162,7 @@
       e.preventDefault();
       withBusy(e.target.querySelector('button'), async () => {
         try {
-          let r = await LepAPI.call('register', { phone: pendingPhone, name: $('name').value });
+          let r = await LepAPI.call('register', { phone: pendingPhone, name: $('name').value, pin });
           let note = 'สมัครสมาชิกเรียบร้อย';
           if ($('stampNow').checked) { r = await LepAPI.call('addStamp', { phone: pendingPhone, pin }); note += ' + เพิ่ม 1 แต้มแล้ว'; }
           $('regForm').classList.add('hidden');

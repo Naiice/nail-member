@@ -21,7 +21,7 @@
     <!-- 1) กรอกเบอร์ -->
     <div class="card" id="stepPhone">
       <h2>เช็กแต้มสะสม</h2>
-      <p class="hint">กรอกเบอร์โทรศัพท์เพื่อดูแต้ม หรือสมัครสมาชิกใหม่</p>
+      <p class="hint">กรอกเบอร์โทรศัพท์ที่ลงทะเบียนไว้กับร้าน เพื่อดูแต้มสะสม</p>
       <form id="phoneForm">
         <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="08x-xxx-xxxx" maxlength="13" required />
         <button class="btn-primary" type="submit">ตรวจสอบ</button>
@@ -29,17 +29,11 @@
       <div class="msg err" id="phoneMsg"></div>
     </div>
 
-    <!-- 2) สมัครสมาชิก -->
-    <div class="card hidden" id="stepRegister">
-      <h2>สมัครสมาชิกใหม่ ✨</h2>
-      <p class="hint">เบอร์ <b id="regPhone"></b> ยังไม่เป็นสมาชิก กรอกชื่อเพื่อเริ่มสะสมแต้มได้เลย</p>
-      <form id="regForm">
-        <label for="name">ชื่อเล่น / ชื่อ</label>
-        <input id="name" type="text" autocomplete="name" maxlength="60" placeholder="เช่น น้องมิ้น" required />
-        <button class="btn-primary" type="submit">สมัครสมาชิก</button>
-      </form>
-      <button class="btn-link" data-back>เปลี่ยนเบอร์</button>
-      <div class="msg err" id="regMsg"></div>
+    <!-- 2) ยังไม่เป็นสมาชิก -->
+    <div class="card hidden" id="stepNotFound">
+      <h2>ยังไม่พบข้อมูลสมาชิก</h2>
+      <p class="hint">เบอร์ <b id="nfPhone"></b> ยังไม่ได้ลงทะเบียน<br />แจ้งพนักงานที่ร้านเพื่อสมัครสมาชิกและเริ่มสะสมแต้มได้เลยค่ะ 💖</p>
+      <button class="btn-ghost" data-back>ลองเบอร์อื่น</button>
     </div>
 
     <!-- 3) บัตรสะสมแต้ม -->
@@ -64,14 +58,15 @@
       </div>
     </div>
 
-    <p class="foot">แจ้งเบอร์โทรกับพนักงานทุกครั้งที่ใช้บริการเพื่อรับแต้ม 💖</p>
+    <p class="foot">แจ้งเบอร์โทรกับพนักงานทุกครั้งที่ใช้บริการเพื่อรับแต้ม 💖<br />
+      <a href="admin.html" style="opacity:.6;font-size:.8rem">สำหรับพนักงาน</a></p>
   </div>
 
   <script src="config.js"></script>
   <script src="api.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
-    const steps = ['stepPhone', 'stepRegister', 'stepCard'];
+    const steps = ['stepPhone', 'stepNotFound', 'stepCard'];
     let currentPhone = null;
 
     if (LepAPI.isMock) $('mockBanner').classList.remove('hidden');
@@ -105,7 +100,7 @@
         const r = await LepAPI.call('lookup', { phone });
         currentPhone = phone;
         if (r.found) { remember(phone); renderCard(r.member); }
-        else { $('regPhone').textContent = LepAPI.formatPhone(phone); $('name').value = ''; show('stepRegister'); $('name').focus(); }
+        else { remember(null); $('nfPhone').textContent = LepAPI.formatPhone(phone); show('stepNotFound'); }
       } catch (err) {
         show('stepPhone'); setMsg('phoneMsg', err.message);
       } finally { if (btn) busy(btn, false); }
@@ -116,20 +111,6 @@
       const phone = LepAPI.normPhone($('phone').value);
       if (!phone) return setMsg('phoneMsg', 'กรุณากรอกเบอร์โทรให้ถูกต้อง (เช่น 0812345678)');
       lookup(phone, e.submitter || e.target.querySelector('button'));
-    });
-
-    $('regForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = e.target.querySelector('button');
-      setMsg('regMsg', '');
-      busy(btn, true);
-      try {
-        const r = await LepAPI.call('register', { phone: currentPhone, name: $('name').value });
-        remember(currentPhone);
-        renderCard(r.member);
-        setMsg('cardMsg', 'สมัครสมาชิกสำเร็จ! ยินดีต้อนรับค่ะ 💅');
-      } catch (err) { setMsg('regMsg', err.message); }
-      finally { busy(btn, false); }
     });
 
     $('refreshBtn').addEventListener('click', (e) => { setMsg('cardMsg', ''); lookup(currentPhone, e.currentTarget); });

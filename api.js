@@ -40,6 +40,7 @@
     switch (action) {
       case 'lookup': return m ? { ok: true, found: true, member: view(m) } : { ok: true, found: false };
       case 'register':
+        pinOk();
         if (!String(b.name || '').trim()) throw new Error('กรุณากรอกชื่อ');
         if (m) return { ok: true, created: false, member: view(m) };
         d[phone] = { phone, name: b.name.trim(), points: 0, visits: 0, freeUsed: 0 };
